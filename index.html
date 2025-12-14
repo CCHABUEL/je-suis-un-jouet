@@ -11,6 +11,9 @@
     <!-- jspdf pour générer le PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- html2canvas pour la capture d'écran -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
     <!-- Google Generative AI SDK -->
     <script type="importmap">
       {
@@ -123,19 +126,32 @@
 
         <!-- Results Grid -->
         <div id="resultsSection" class="hidden">
-            <h2 class="text-3xl font-bold text-center mb-8 text-gray-700">Votre collection de jouets</h2>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12" id="toysGrid">
-                <!-- Les cartes seront générées ici par JS -->
+            <!-- Zone spécifique pour la capture d'écran (Titre + Grille) -->
+            <div id="captureZone" class="p-4 rounded-xl">
+                <h2 class="text-3xl font-bold text-center mb-8 text-gray-700">Votre collection de jouets</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="toysGrid">
+                    <!-- Les cartes seront générées ici par JS -->
+                </div>
+                
+                <!-- Petit watermark discret pour la capture -->
+                <div class="text-center text-xs text-gray-400 italic mb-4 hidden" id="captureWatermark">
+                    Créé avec JeSuisUnJouet
+                </div>
             </div>
 
-            <!-- PDF Download Button -->
-            <div class="text-center pb-12">
-                <button onclick="downloadPDF()" id="pdfBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-8 rounded-full text-lg shadow-xl transform transition hover:-translate-y-1 flex items-center justify-center gap-3 mx-auto">
+            <!-- Boutons de téléchargement -->
+            <div class="text-center pb-12 flex flex-col md:flex-row justify-center gap-4">
+                <button onclick="downloadPDF()" id="pdfBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transform transition hover:-translate-y-1 flex items-center justify-center gap-3 w-full md:w-auto">
                     <i class="fas fa-file-pdf text-2xl"></i>
-                    Télécharger l'album PDF complet
+                    Album PDF
                 </button>
-                <p class="text-gray-500 text-sm mt-3">Créez une page souvenir unique à imprimer !</p>
+                
+                <button onclick="downloadCapture()" id="captureBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transform transition hover:-translate-y-1 flex items-center justify-center gap-3 w-full md:w-auto">
+                    <i class="fas fa-camera text-2xl"></i>
+                    Image (JPG)
+                </button>
             </div>
         </div>
 
@@ -150,10 +166,6 @@
         import { GoogleGenerativeAI } from "@google/generative-ai";
 
         // --- ZONE DE CONFIGURATION ---
-        // 1. Collez votre clé API entre les guillemets ci-dessous
-        // 2. Exemple : const MA_CLE_GOOGLE = "AIzaSyD-xxxxxxxxxxxxxxxx";
-        // 3. Ne partagez pas ce fichier publiquement si vous mettez votre clé !
-        
         const MA_CLE_GOOGLE = ""; 
 
 
@@ -171,10 +183,8 @@
 
         let uploadedImageBase64 = null;
         
-        // On utilise la clé fixe SI elle est remplie, sinon on cherche dans le stockage du navigateur
         let apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
 
-        // Initialisation de la grille vide
         function initGrid() {
             const grid = document.getElementById('toysGrid');
             grid.innerHTML = '';
@@ -200,40 +210,33 @@
             });
         }
 
-        // Gestion de l'upload
         window.handleFileSelect = (event) => {
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = (e) => {
-                uploadedImageBase64 = e.target.result; // Data URL complète
+                uploadedImageBase64 = e.target.result;
                 
-                // Affichage Preview
                 const img = document.getElementById('sourceImage');
                 img.src = uploadedImageBase64;
                 img.classList.remove('hidden');
                 document.getElementById('uploadPlaceholder').classList.add('hidden');
                 
-                // Activer le bouton
                 const btn = document.getElementById('generateBtn');
                 btn.disabled = false;
                 btn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
                 btn.classList.add('bg-green-500', 'hover:bg-green-600', 'text-white');
                 
-                // Reset et affichage section résultats
                 initGrid();
                 document.getElementById('resultsSection').classList.remove('hidden');
                 
-                // Scroll doux vers le bouton
                 btn.scrollIntoView({behavior: 'smooth', block: 'center'});
             };
             reader.readAsDataURL(file);
         };
 
-        // Logique de génération
         window.generateAllToys = async () => {
-            // Mise à jour de la clé au moment du clic (au cas où elle vient d'être entrée dans la modale)
             if (!apiKey) {
                 apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
             }
@@ -264,7 +267,6 @@
             const container = document.getElementById(`img-container-${style.id}`);
             const placeholder = document.getElementById(`placeholder-${style.id}`);
             
-            // Afficher loader
             placeholder.innerHTML = '<div class="loader"></div>';
 
             try {
@@ -302,61 +304,85 @@
             }
         }
 
-        // PDF Generation Logic
+        // Logic Capture d'écran
+        window.downloadCapture = () => {
+            const captureElement = document.getElementById('captureZone');
+            const btn = document.getElementById('captureBtn');
+            const watermark = document.getElementById('captureWatermark');
+            
+            // État chargement
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Préparation...';
+            btn.disabled = true;
+
+            // Afficher watermark temporairement
+            watermark.classList.remove('hidden');
+
+            html2canvas(captureElement, {
+                backgroundColor: '#fdf6e3', // Couleur de fond du body pour que ça soit joli
+                scale: 2, // Meilleure qualité (Retina)
+                logging: false,
+                useCORS: true // Important si jamais on charge des images externes (ici base64 donc ça va)
+            }).then(canvas => {
+                // Créer le lien de téléchargement
+                const link = document.createElement('a');
+                link.download = 'MaCollectionJouets.jpg';
+                link.href = canvas.toDataURL('image/jpeg', 0.9); // Qualité JPEG 90%
+                link.click();
+
+                // Reset
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                watermark.classList.add('hidden');
+            }).catch(err => {
+                console.error("Erreur capture", err);
+                alert("Oups, la capture a échoué. Vérifiez la console.");
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                watermark.classList.add('hidden');
+            });
+        };
+
         window.downloadPDF = async () => {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            // Titre
             doc.setFont("helvetica", "bold");
             doc.setFontSize(22);
             doc.setTextColor(255, 107, 107);
             doc.text("Ma Collection JeSuisUnJouet", 105, 20, null, null, "center");
             
-            // Configuration grille optimisée pour A4 (210 x 297 mm)
-            // On veut faire tenir 4 rangées de 2 images sur UNE SEULE page
-            const imgWidth = 70;  // Largeur réduite (était 75)
-            const imgHeight = 50; // Hauteur réduite (était 55) pour gagner 20mm total sur la page
-            const gapX = 15;      // Espace horizontal un peu plus aéré
-            const gapY = 8;       // Espace vertical réduit
+            const imgWidth = 70;
+            const imgHeight = 50;
+            const gapX = 15;
+            const gapY = 8;
             
-            // Calcul pour centrer horizontalement : (210 - (2*70 + 15)) / 2 = 27.5
             const startX = 27.5; 
-            const startY = 30;    // On remonte le début de 5mm
+            const startY = 30;
             
             let currentX = startX;
             let currentY = startY;
             let col = 0;
             let count = 0;
 
-            doc.setFontSize(11); // Police un peu plus petite pour les légendes
+            doc.setFontSize(11);
             doc.setTextColor(50, 50, 50);
 
-            // On parcourt tous les styles
             for (let i = 0; i < toyStyles.length; i++) {
                 const style = toyStyles[i];
                 const imgElement = document.getElementById(`img-${style.id}`);
                 
-                // Si l'image existe (a été générée)
                 if (imgElement && imgElement.src) {
                     try {
-                        // Dessiner l'image
                         doc.addImage(imgElement.src, 'JPEG', currentX, currentY, imgWidth, imgHeight);
-                        
-                        // Dessiner le cadre
                         doc.setDrawColor(220, 220, 220);
                         doc.rect(currentX, currentY, imgWidth, imgHeight);
-
-                        // Ajouter le titre en dessous
                         doc.setFont("helvetica", "bold");
-                        // Position du texte : Y + hauteur image + petit espace
                         doc.text(style.name, currentX + (imgWidth/2), currentY + imgHeight + 5, null, null, "center");
                         
                         count++;
-                        
-                        // Gestion des colonnes/lignes
                         col++;
-                        if (col > 1) { // Après 2 colonnes, on change de ligne
+                        if (col > 1) {
                             col = 0;
                             currentX = startX;
                             currentY += imgHeight + gapY;
@@ -364,7 +390,6 @@
                             currentX += imgWidth + gapX;
                         }
 
-                        // Sécurité : Si jamais on dépasse (ex: on ajoute d'autres jouets plus tard)
                         if (currentY + imgHeight > 280) {
                             doc.addPage();
                             currentY = 20;
@@ -383,7 +408,6 @@
                 return;
             }
 
-            // Footer (discret en bas de page)
             doc.setFontSize(8);
             doc.setTextColor(180, 180, 180);
             doc.text("Généré par JeSuisUnJouet via Gemini AI", 105, 290, null, null, "center");
@@ -391,7 +415,6 @@
             doc.save("MaCollectionJouets.pdf");
         };
 
-        // Utilitaires
         window.saveApiKey = () => {
             const key = document.getElementById('userApiKey').value;
             if (key) {
