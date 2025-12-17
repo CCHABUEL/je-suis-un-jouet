@@ -83,14 +83,14 @@
             <button onclick="document.getElementById('apiKeyModal').classList.add('hidden')" class="absolute top-2 right-2 text-gray-400 p-2">
                 <i class="fas fa-times text-xl"></i>
             </button>
-            <h3 class="text-xl font-bold mb-4 text-center text-yellow-500">Clé API Requise</h3>
+            <h3 class="text-xl font-bold mb-4 text-center text-yellow-500">Connexion Google AI</h3>
             <div class="mb-4">
-                <p class="text-sm text-gray-600 mb-2">Collez votre clé Google AI ci-dessous (commence par "Alza...").</p>
-                <input type="password" id="userApiKey" placeholder="AlzaSy..." class="w-full p-4 border-2 border-gray-200 rounded-xl text-base outline-none focus:border-yellow-400 font-mono text-sm">
+                <p class="text-sm text-gray-600 mb-2">Collez votre <strong>Clé API</strong> ci-dessous.</p>
+                <input type="password" id="userApiKey" placeholder="AIzaSy..." class="w-full p-4 border-2 border-gray-200 rounded-xl text-base outline-none focus:border-yellow-400 font-mono text-sm">
             </div>
             <div class="flex gap-2 mb-4">
                 <button onclick="testConnection()" id="testConnBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-xl text-sm transition">
-                    <i class="fas fa-plug"></i> Tester Connexion
+                    <i class="fas fa-plug"></i> Tester
                 </button>
                 <button onclick="clearKey()" class="bg-red-100 hover:bg-red-200 text-red-500 font-bold py-3 px-4 rounded-xl text-sm transition">
                     <i class="fas fa-trash"></i>
@@ -175,7 +175,7 @@
             { id: 'action', name: 'Action Man', icon: 'fa-fist-raised', color: 'border-red-600', prompt: "Vintage 80s plastic action figure. Muscular, stiff pose, plastic sheen." }
         ];
 
-        // --- RESIZE IMAGE (ENCORE PLUS PETIT = PLUS SÛR) ---
+        // --- RESIZE IMAGE ---
         function resizeImage(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -291,14 +291,22 @@
                 if (!uploadedImageBase64) throw new Error("Image non chargée");
                 const base64Data = uploadedImageBase64.split(',')[1];
 
+                // AJOUT DES REGLAGES DE SECURITE PERMISSIFS (Pour éviter le "Refus sans raison")
                 const result = await model.generateContent({
                     contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
-                    generationConfig: { responseModalities: ["IMAGE"] }
+                    generationConfig: { responseModalities: ["IMAGE"] },
+                    safetySettings: [
+                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+                    ]
                 });
                 
                 const candidate = result.response.candidates?.[0];
-                const imgPart = candidate?.content?.parts?.find(p => p.inlineData);
                 
+                // 1. Succès : Image générée
+                const imgPart = candidate?.content?.parts?.find(p => p.inlineData);
                 if(imgPart) {
                     const src = `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
                     container.innerHTML = `<img src="${src}" id="img-${style.id}" alt="${style.name}" class="animate-fade-in" style="width:100%; height:100%; object-fit:cover;">`;
@@ -306,27 +314,35 @@
                     if(btn) { btn.disabled = false; btn.classList.replace('text-gray-300', 'text-blue-500'); }
                     return;
                 }
-                throw new Error("Pas d'image (Refus IA)");
+
+                // 2. Refus Textuel (L'IA explique pourquoi)
+                const textPart = candidate?.content?.parts?.find(p => p.text);
+                if(textPart) {
+                    throw new Error("Refus IA: " + textPart.text.substring(0, 50) + "...");
+                }
+
+                // 3. Blocage Sécurité Explicite
+                if (result.response.promptFeedback?.blockReason) {
+                     throw new Error("Sécurité: " + result.response.promptFeedback.blockReason);
+                }
+
+                throw new Error("Génération vide (Réessayez)");
 
             } catch (error) {
                 console.error("Erreur " + style.name, error);
                 
-                // --- DIAGNOSTIC PRECIS ---
                 let reason = "Erreur inconnue";
                 let details = "";
 
-                // Extraction des détails cachés de Google (ce que vous voyiez en 'Array(2)')
                 if (error.errorDetails && Array.isArray(error.errorDetails)) {
                      const detailObj = error.errorDetails.find(d => d.reason);
-                     if(detailObj) reason = detailObj.reason; // ex: API_KEY_INVALID
-                     
+                     if(detailObj) reason = detailObj.reason;
                      const msgObj = error.errorDetails.find(d => d.message);
                      if(msgObj) details = msgObj.message;
                 } else if (error.message) {
                     reason = error.message;
                 }
 
-                // Traduction pour l'utilisateur
                 let userMsg = reason;
                 if(reason.includes("API_KEY_INVALID")) userMsg = "CLÉ INVALIDE";
                 if(reason.includes("PERMISSION_DENIED")) userMsg = "PERMISSION REFUSÉE";
@@ -343,14 +359,8 @@
         // --- FONCTIONS CLÉ API ---
         window.saveApiKey = () => {
             const input = document.getElementById('userApiKey');
-            // NETTOYAGE AGRESSIF : On ne garde que les lettres, chiffres et tirets. Adieu les espaces cachés !
-            const cleanKey = input.value.replace(/[^a-zA-Z0-9_\-]/g, '');
+            const cleanKey = input.value.replace(/[^a-zA-Z0-9_\-]/g, ''); // Nettoyage espaces
             
-            if (!cleanKey.startsWith('AIza')) {
-                alert("Erreur: Une clé Google doit commencer par 'AIza'.");
-                return;
-            }
-
             localStorage.setItem('gemini_api_key', cleanKey);
             apiKey = cleanKey;
             document.getElementById('apiKeyModal').classList.add('hidden');
@@ -377,7 +387,6 @@
             resDiv.innerHTML = "Tentative de connexion...";
             
             try {
-                // Test simple TEXTE pour valider la clé (modèle standard)
                 const genAI = new GoogleGenerativeAI(keyToTest);
                 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 const result = await model.generateContent("Hello");
@@ -390,10 +399,8 @@
                 btn.classList.add('bg-green-200');
             } catch (e) {
                 console.error(e);
-                let errReason = "Erreur inconnue";
+                let errReason = e.message;
                 if(e.errorDetails) errReason = JSON.stringify(e.errorDetails);
-                else errReason = e.message;
-
                 resDiv.className = "mt-4 text-xs text-center font-bold p-2 rounded bg-red-100 text-red-700";
                 resDiv.innerHTML = `<i class="fas fa-times"></i> ÉCHEC : ${errReason}`;
                 btn.innerHTML = '<i class="fas fa-times"></i> Erreur';
