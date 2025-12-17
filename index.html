@@ -168,7 +168,7 @@
             { id: 'action', name: 'Action Man', icon: 'fa-fist-raised', color: 'border-red-600', prompt: "Vintage 80s plastic action figure. Muscular, stiff pose, plastic sheen." }
         ];
 
-        // --- RESIZE IMAGE (CRUCIAL POUR MOBILE) ---
+        // --- RESIZE IMAGE (ENCORE PLUS PETIT = PLUS SÛR) ---
         function resizeImage(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -178,7 +178,7 @@
                         const canvas = document.createElement('canvas');
                         let width = img.width;
                         let height = img.height;
-                        const MAX_SIZE = 800; 
+                        const MAX_SIZE = 512; // Réduit à 512 pour être sûr que le payload passe
 
                         if (width > height) {
                             if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
@@ -190,7 +190,7 @@
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                        resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compression 60%
                     };
                     img.src = e.target.result;
                 };
@@ -258,7 +258,6 @@
         };
 
         window.generateAllToys = async () => {
-            // VERIFICATION CRITIQUE : Image présente ?
             if (!uploadedImageBase64) {
                 alert("Veuillez d'abord ajouter une photo !");
                 return;
@@ -289,19 +288,13 @@
             if(container) container.innerHTML = '<div class="loader"></div>';
 
             try {
-                // Double vérification
                 if (!uploadedImageBase64) throw new Error("Image non chargée");
                 const base64Data = uploadedImageBase64.split(',')[1];
 
+                // Note: J'ai retiré les SafetySettings pour réduire les causes d'erreur 400
                 const result = await model.generateContent({
                     contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
-                    generationConfig: { responseModalities: ["IMAGE"] },
-                    safetySettings: [
-                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
-                    ]
+                    generationConfig: { responseModalities: ["IMAGE"] }
                 });
                 
                 const candidate = result.response.candidates?.[0];
@@ -316,34 +309,44 @@
                 }
 
                 if (result.response.promptFeedback?.blockReason) {
-                     throw new Error("Bloqué par sécurité");
+                     throw new Error("Bloqué par sécurité: " + result.response.promptFeedback.blockReason);
                 }
-                throw new Error("Refus IA");
+                throw new Error("Refus IA sans raison");
 
             } catch (error) {
                 console.error("Erreur " + style.name, error);
-                let msg = error.message;
-                let isKeyError = false;
+                
+                // EXTRACTION INTELLIGENTE DE L'ERREUR
+                let displayMsg = "Erreur inconnue";
 
-                if(msg.includes('400') || msg.includes('API key')) {
-                    msg = "Clé API Invalide";
-                    isKeyError = true;
-                } else if(msg.includes('403')) {
-                     msg = "Clé refusée (403)";
-                     isKeyError = true;
-                } else if(msg.includes('500')) {
-                    msg = "Erreur Serveur";
+                // 1. Essayer de lire le message brut
+                if (error.message) displayMsg = error.message;
+
+                // 2. Chercher dans les détails cachés de Google (errorDetails)
+                if (error.errorDetails && Array.isArray(error.errorDetails) && error.errorDetails.length > 0) {
+                    const detail = error.errorDetails[0];
+                    if (detail.reason) displayMsg = detail.reason; // ex: "API_KEY_INVALID"
+                    if (detail.message) displayMsg += ": " + detail.message;
+                } 
+                // 3. Fallback sur le statut HTTP
+                else if (error.status) {
+                     displayMsg = `Erreur HTTP ${error.status}`;
                 }
 
-                if (isKeyError) {
-                     container.innerHTML = `
+                // Traduction conviviale pour l'utilisateur
+                if(displayMsg.includes('API_KEY_INVALID')) {
+                    container.innerHTML = `
                         <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500">
                             <i class="fas fa-key text-xl mb-2"></i>
-                            <span class="text-[10px] font-bold mb-2">Clé Incorrecte</span>
-                            <button onclick="showConfig()" class="bg-red-500 text-white text-[10px] px-2 py-1 rounded">Corriger la clé</button>
+                            <span class="text-[10px] font-bold">Clé Invalide</span>
+                            <button onclick="showConfig()" class="mt-2 bg-red-500 text-white text-[10px] px-2 py-1 rounded">Corriger</button>
                         </div>`;
                 } else {
-                    container.innerHTML = `<div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500"><i class="fas fa-bug text-xl mb-1"></i><span class="text-[10px] font-mono leading-tight">${msg}</span></div>`;
+                    container.innerHTML = `
+                        <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500">
+                            <i class="fas fa-bug text-xl mb-1"></i>
+                            <p class="text-[9px] font-mono leading-tight break-all px-1">${displayMsg.substring(0, 100)}</p>
+                        </div>`;
                 }
             }
         }
@@ -400,14 +403,18 @@
 
         window.saveApiKey = () => {
             const input = document.getElementById('userApiKey');
-            // NETTOYAGE : On enlève les espaces avant/après qui causent l'erreur
             const key = input.value.trim();
             
+            // Validation basique
+            if (!key.startsWith('AIza')) {
+                alert("Attention: Une clé Google valide commence généralement par 'AIza'. Vérifiez votre copier-coller.");
+                return;
+            }
+
             if (key) {
                 localStorage.setItem('gemini_api_key', key);
                 apiKey = key;
                 document.getElementById('apiKeyModal').classList.add('hidden');
-                // On relance la génération si une image est présente
                 if(uploadedImageBase64) window.generateAllToys();
             } else {
                 alert("Veuillez entrer une clé valide.");
