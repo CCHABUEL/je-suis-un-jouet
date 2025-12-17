@@ -2,7 +2,6 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <!-- Viewport optimisé pour bloquer le zoom et donner l'impression d'une vraie app -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JeSuisUnJouet</title>
     
@@ -28,11 +27,9 @@
         body {
             font-family: 'Fredoka', sans-serif;
             background-color: #fdf6e3;
-            /* Pour éviter le rebond élastique sur iOS */
             overscroll-behavior-y: none;
         }
         
-        /* Empêcher la sélection de texte comme sur une vraie app */
         .no-select {
             -webkit-touch-callout: none;
             -webkit-user-select: none;
@@ -45,14 +42,13 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            /* Ombre douce */
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         .card-image-wrapper {
             position: relative;
             width: 100%;
-            padding-top: 100%; /* Ratio 1:1 Carré parfait */
+            padding-top: 100%; /* Ratio 1:1 */
             background: #f3f4f6;
         }
 
@@ -65,6 +61,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow: hidden; /* Important pour que l'image ne déborde pas */
         }
 
         .card-image-content img {
@@ -277,25 +274,58 @@
         async function generateSingleToy(model, style) {
             const container = document.getElementById(`container-${style.id}`);
             const placeholder = document.getElementById(`placeholder-${style.id}`);
-            placeholder.innerHTML = '<div class="loader"></div>';
+            
+            // On s'assure que le contenu précédent est vidé pour afficher le loader
+            if(container) {
+                container.innerHTML = '<div class="loader"></div>';
+            }
 
             try {
+                // Sécurisation de l'image base64
+                if (!uploadedImageBase64) throw new Error("Image source manquante");
+                const base64Data = uploadedImageBase64.includes(',') ? uploadedImageBase64.split(',')[1] : uploadedImageBase64;
+
                 const result = await model.generateContent({
-                    contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: uploadedImageBase64.split(',')[1] } }] }],
+                    contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
                     generationConfig: { responseModalities: ["IMAGE"] }
                 });
                 
-                const imgPart = result.response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                // Vérification robuste de la réponse
+                const candidate = result.response.candidates?.[0];
+                
+                // 1. Cas : Image générée avec succès
+                const imgPart = candidate?.content?.parts?.find(p => p.inlineData);
                 if(imgPart) {
                     const src = `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-                    container.innerHTML = `<img src="${src}" id="img-${style.id}" alt="${style.name}" class="animate-fade-in">`;
-                    document.getElementById(`btn-${style.id}`).disabled = false;
-                    document.getElementById(`btn-${style.id}`).classList.remove('text-gray-300');
-                    document.getElementById(`btn-${style.id}`).classList.add('text-blue-500');
+                    // Injection directe de l'image
+                    container.innerHTML = `<img src="${src}" id="img-${style.id}" alt="${style.name}" class="animate-fade-in" style="width:100%; height:100%; object-fit:cover;">`;
+                    
+                    const btn = document.getElementById(`btn-${style.id}`);
+                    if(btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('text-gray-300');
+                        btn.classList.add('text-blue-500');
+                    }
+                    return; // Succès
                 }
+
+                // 2. Cas : Refus (Safety) ou Texte explicatif
+                const textPart = candidate?.content?.parts?.find(p => p.text);
+                if (textPart) {
+                    throw new Error("Refus IA: " + textPart.text.substring(0, 50) + "...");
+                }
+                
+                // 3. Cas : Safety Ratings bloquants (sans texte)
+                if (result.response.promptFeedback?.blockReason) {
+                     throw new Error("Bloqué: " + result.response.promptFeedback.blockReason);
+                }
+
+                throw new Error("Pas d'image reçue");
+
             } catch (error) {
-                console.error(error);
-                placeholder.innerHTML = '<i class="fas fa-times text-red-400"></i>';
+                console.error("Erreur détaillée pour " + style.name, error);
+                // Affichage de l'erreur visible pour l'utilisateur
+                container.innerHTML = `<div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50"><i class="fas fa-exclamation-triangle text-red-400 text-2xl mb-1"></i><p class="text-[10px] text-red-500 leading-tight font-mono break-words w-full">${error.message || "Erreur inconnue"}</p></div>`;
             }
         }
 
