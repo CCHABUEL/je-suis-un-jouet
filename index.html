@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
-    <!-- Outil de diagnostic mobile (Affiche la console sur le téléphone) -->
+    <!-- Eruda pour le debug mobile -->
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <script>eruda.init();</script>
 
@@ -30,12 +30,6 @@
             overscroll-behavior-y: none;
         }
         
-        .no-select {
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            user-select: none;
-        }
-
         .toy-card {
             background: white;
             border-radius: 1rem;
@@ -61,7 +55,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden; /* Important pour que l'image ne déborde pas */
+            overflow: hidden;
         }
 
         .card-image-content img {
@@ -90,9 +84,12 @@
                 <i class="fas fa-times text-xl"></i>
             </button>
             <h3 class="text-xl font-bold mb-4 text-center text-yellow-500">Clé API Requise</h3>
-            <input type="password" id="userApiKey" placeholder="Collez votre clé Google AI ici..." class="w-full p-4 border-2 border-gray-200 rounded-xl mb-4 text-base outline-none focus:border-yellow-400">
-            <button onclick="saveApiKey()" class="w-full bg-yellow-400 text-white font-bold py-4 rounded-xl text-lg shadow-md active:scale-95 transition-transform">Valider</button>
-            <p class="text-xs text-center text-gray-400 mt-4">Nécessaire uniquement la première fois.</p>
+            <div class="mb-4">
+                <p class="text-sm text-gray-600 mb-2">Collez votre clé Google AI ci-dessous (commence par "Alza...").</p>
+                <input type="password" id="userApiKey" placeholder="AlzaSy..." class="w-full p-4 border-2 border-gray-200 rounded-xl text-base outline-none focus:border-yellow-400 font-mono text-sm">
+            </div>
+            <button onclick="saveApiKey()" class="w-full bg-yellow-400 text-white font-bold py-4 rounded-xl text-lg shadow-md active:scale-95 transition-transform">Valider la clé</button>
+            <p class="text-xs text-center text-gray-400 mt-4">Si vous avez des erreurs, essayez d'en générer une nouvelle.</p>
         </div>
     </div>
 
@@ -135,14 +132,9 @@
 
         <!-- Zone Résultats -->
         <div id="resultsSection" class="hidden animate-fade-in">
-            
             <div id="captureZone" class="bg-[#fdf6e3] rounded-xl p-2 mb-6">
                 <h2 class="text-2xl font-bold text-center mb-6 text-gray-700">Ma Collection</h2>
-                
-                <div class="grid grid-cols-2 gap-4" id="toysGrid">
-                    <!-- Les cartes seront injectées ici -->
-                </div>
-                
+                <div class="grid grid-cols-2 gap-4" id="toysGrid"></div>
                 <div class="text-center text-[10px] text-gray-400 mt-4 hidden" id="captureWatermark">Généré par JeSuisUnJouet</div>
             </div>
 
@@ -151,17 +143,11 @@
                 <button onclick="downloadCapture()" id="captureBtn" class="w-full bg-green-500 active:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-3 text-lg transition-transform active:scale-95">
                     <i class="fas fa-image"></i> Sauver Image (JPG)
                 </button>
-                
                 <button onclick="downloadPDF()" id="pdfBtn" class="w-full bg-red-500 active:bg-red-600 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-3 text-lg transition-transform active:scale-95">
                     <i class="fas fa-file-pdf"></i> Télécharger PDF
                 </button>
-                
-                <p class="text-xs text-center text-gray-400 mt-2 px-4">
-                    Si le téléchargement ne démarre pas, vérifiez que vous n'êtes pas dans un navigateur intégré (Instagram, TikTok, etc.).
-                </p>
             </div>
         </div>
-
     </main>
 
     <script type="module">
@@ -182,7 +168,36 @@
             { id: 'action', name: 'Action Man', icon: 'fa-fist-raised', color: 'border-red-600', prompt: "Vintage 80s plastic action figure. Muscular, stiff pose, plastic sheen." }
         ];
 
-        // --- OUTILS TÉLÉCHARGEMENT ROBUSTE (iOS/Android) ---
+        // --- RESIZE IMAGE (CRUCIAL POUR MOBILE) ---
+        function resizeImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const MAX_SIZE = 800; 
+
+                        if (width > height) {
+                            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                        } else {
+                            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
         function triggerDownload(blob, filename) {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -191,10 +206,7 @@
             a.download = filename;
             document.body.appendChild(a);
             a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 100);
+            setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
         }
 
         window.initGrid = () => {
@@ -223,206 +235,182 @@
             });
         };
 
-        window.handleFileSelect = (event) => {
+        window.handleFileSelect = async (event) => {
             const file = event.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                uploadedImageBase64 = e.target.result;
-                document.getElementById('sourceImage').src = uploadedImageBase64;
-                document.getElementById('sourceImage').classList.remove('hidden');
-                document.getElementById('uploadPlaceholder').classList.add('hidden');
-                
-                const btn = document.getElementById('generateBtn');
-                btn.disabled = false;
-                btn.classList.remove('bg-gray-200', 'text-gray-400', 'cursor-not-allowed');
-                btn.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600', 'active:bg-blue-700');
-                
-                window.initGrid();
-                document.getElementById('resultsSection').classList.remove('hidden');
-                
-                // Scroll automatique doux
-                setTimeout(() => {
-                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 300);
-            };
-            reader.readAsDataURL(file);
+
+            document.getElementById('uploadPlaceholder').innerHTML = '<i class="fas fa-spinner fa-spin text-2xl"></i>';
+            
+            uploadedImageBase64 = await resizeImage(file);
+            
+            document.getElementById('sourceImage').src = uploadedImageBase64;
+            document.getElementById('sourceImage').classList.remove('hidden');
+            document.getElementById('uploadPlaceholder').classList.add('hidden');
+            
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = false;
+            btn.classList.remove('bg-gray-200', 'text-gray-400', 'cursor-not-allowed');
+            btn.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600', 'active:bg-blue-700');
+            
+            window.initGrid();
+            document.getElementById('resultsSection').classList.remove('hidden');
+            setTimeout(() => { btn.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300);
         };
 
         window.generateAllToys = async () => {
+            // VERIFICATION CRITIQUE : Image présente ?
+            if (!uploadedImageBase64) {
+                alert("Veuillez d'abord ajouter une photo !");
+                return;
+            }
+
             if (!apiKey) apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
             if (!apiKey) { document.getElementById('apiKeyModal').classList.remove('hidden'); return; }
 
             const btn = document.getElementById('generateBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fabrication en cours...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fabrication...';
 
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
 
-            // Génération séquentielle pour ne pas crasher le navigateur mobile
             for (const style of toyStyles) {
                 await generateSingleToy(model, style);
             }
             
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check"></i> Terminé ! (Relancer)';
+            btn.innerHTML = '<i class="fas fa-check"></i> Terminé !';
             setTimeout(() => { btn.innerHTML = originalText; }, 3000);
         };
 
         async function generateSingleToy(model, style) {
             const container = document.getElementById(`container-${style.id}`);
-            const placeholder = document.getElementById(`placeholder-${style.id}`);
-            
-            // On s'assure que le contenu précédent est vidé pour afficher le loader
-            if(container) {
-                container.innerHTML = '<div class="loader"></div>';
-            }
+            if(container) container.innerHTML = '<div class="loader"></div>';
 
             try {
-                // Sécurisation de l'image base64
-                if (!uploadedImageBase64) throw new Error("Image source manquante");
-                const base64Data = uploadedImageBase64.includes(',') ? uploadedImageBase64.split(',')[1] : uploadedImageBase64;
+                // Double vérification
+                if (!uploadedImageBase64) throw new Error("Image non chargée");
+                const base64Data = uploadedImageBase64.split(',')[1];
 
                 const result = await model.generateContent({
                     contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
-                    generationConfig: { responseModalities: ["IMAGE"] }
+                    generationConfig: { responseModalities: ["IMAGE"] },
+                    safetySettings: [
+                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+                    ]
                 });
                 
-                // Vérification robuste de la réponse
                 const candidate = result.response.candidates?.[0];
-                
-                // 1. Cas : Image générée avec succès
                 const imgPart = candidate?.content?.parts?.find(p => p.inlineData);
+                
                 if(imgPart) {
                     const src = `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-                    // Injection directe de l'image
                     container.innerHTML = `<img src="${src}" id="img-${style.id}" alt="${style.name}" class="animate-fade-in" style="width:100%; height:100%; object-fit:cover;">`;
-                    
                     const btn = document.getElementById(`btn-${style.id}`);
-                    if(btn) {
-                        btn.disabled = false;
-                        btn.classList.remove('text-gray-300');
-                        btn.classList.add('text-blue-500');
-                    }
-                    return; // Succès
+                    if(btn) { btn.disabled = false; btn.classList.replace('text-gray-300', 'text-blue-500'); }
+                    return;
                 }
 
-                // 2. Cas : Refus (Safety) ou Texte explicatif
-                const textPart = candidate?.content?.parts?.find(p => p.text);
-                if (textPart) {
-                    throw new Error("Refus IA: " + textPart.text.substring(0, 50) + "...");
-                }
-                
-                // 3. Cas : Safety Ratings bloquants (sans texte)
                 if (result.response.promptFeedback?.blockReason) {
-                     throw new Error("Bloqué: " + result.response.promptFeedback.blockReason);
+                     throw new Error("Bloqué par sécurité");
                 }
-
-                throw new Error("Pas d'image reçue");
+                throw new Error("Refus IA");
 
             } catch (error) {
-                console.error("Erreur détaillée pour " + style.name, error);
-                // Affichage de l'erreur visible pour l'utilisateur
-                container.innerHTML = `<div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50"><i class="fas fa-exclamation-triangle text-red-400 text-2xl mb-1"></i><p class="text-[10px] text-red-500 leading-tight font-mono break-words w-full">${error.message || "Erreur inconnue"}</p></div>`;
+                console.error("Erreur " + style.name, error);
+                let msg = error.message;
+                let isKeyError = false;
+
+                if(msg.includes('400') || msg.includes('API key')) {
+                    msg = "Clé API Invalide";
+                    isKeyError = true;
+                } else if(msg.includes('403')) {
+                     msg = "Clé refusée (403)";
+                     isKeyError = true;
+                } else if(msg.includes('500')) {
+                    msg = "Erreur Serveur";
+                }
+
+                if (isKeyError) {
+                     container.innerHTML = `
+                        <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500">
+                            <i class="fas fa-key text-xl mb-2"></i>
+                            <span class="text-[10px] font-bold mb-2">Clé Incorrecte</span>
+                            <button onclick="showConfig()" class="bg-red-500 text-white text-[10px] px-2 py-1 rounded">Corriger la clé</button>
+                        </div>`;
+                } else {
+                    container.innerHTML = `<div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500"><i class="fas fa-bug text-xl mb-1"></i><span class="text-[10px] font-mono leading-tight">${msg}</span></div>`;
+                }
             }
         }
 
         window.downloadSingle = (id) => {
             const img = document.getElementById(`img-${id}`);
-            if(img) {
-                fetch(img.src)
-                    .then(res => res.blob())
-                    .then(blob => triggerDownload(blob, `Jouet-${id}.jpg`));
-            }
+            if(img) fetch(img.src).then(res => res.blob()).then(blob => triggerDownload(blob, `Jouet-${id}.jpg`));
         };
 
         window.downloadCapture = () => {
             const btn = document.getElementById('captureBtn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
-            btn.disabled = true;
-            
-            const element = document.getElementById('captureZone');
+            btn.innerHTML = '...'; btn.disabled = true;
             document.getElementById('captureWatermark').classList.remove('hidden');
 
-            html2canvas(element, {
-                scale: 1.5, // Compromis qualité/performance mobile
-                useCORS: true,
-                backgroundColor: '#fdf6e3',
-                logging: false
+            html2canvas(document.getElementById('captureZone'), {
+                scale: 1.5, useCORS: true, backgroundColor: '#fdf6e3', logging: false
             }).then(canvas => {
                 canvas.toBlob(blob => {
                     triggerDownload(blob, 'MaCollection.jpg');
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
+                    btn.innerHTML = originalText; btn.disabled = false;
                     document.getElementById('captureWatermark').classList.add('hidden');
                 }, 'image/jpeg', 0.85);
-            }).catch(e => {
-                alert("Erreur mémoire. Essayez de télécharger les images une par une.");
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            });
+            }).catch(e => { alert("Erreur Capture Mobile"); btn.innerHTML = originalText; btn.disabled = false; });
         };
 
         window.downloadPDF = () => {
             const btn = document.getElementById('pdfBtn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF...';
-            btn.disabled = true;
-
+            btn.innerHTML = '...'; btn.disabled = true;
             setTimeout(() => {
                 try {
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
-                    
-                    doc.setFontSize(20);
-                    doc.setTextColor(220, 50, 50);
+                    doc.setFontSize(20); doc.setTextColor(220, 50, 50);
                     doc.text("Ma Collection", 105, 20, null, null, "center");
-                    
-                    let y = 40;
-                    let count = 0;
-                    
-                    toyStyles.forEach((style, index) => {
+                    let y = 40; let count = 0;
+                    toyStyles.forEach((style) => {
                         const img = document.getElementById(`img-${style.id}`);
-                        if(img) {
-                            // Mise en page simple : 2 images par ligne ou 1 grosse par page selon préférence
-                            // Ici: liste verticale simple pour robustesse
+                        if(img && img.src) {
                             if(y > 250) { doc.addPage(); y = 20; }
-                            
                             doc.addImage(img.src, 'JPEG', 20, y, 60, 60);
-                            doc.setFontSize(12);
-                            doc.setTextColor(50,50,50);
+                            doc.setFontSize(12); doc.setTextColor(50,50,50);
                             doc.text(style.name, 90, y + 30);
-                            
-                            y += 70;
-                            count++;
+                            y += 70; count++;
                         }
                     });
-
-                    if(count > 0) {
-                        doc.save("CollectionJouets.pdf");
-                    } else {
-                        alert("Aucun jouet généré à imprimer !");
-                    }
-                } catch(e) {
-                    console.error(e);
-                    alert("Erreur PDF. Mobile possiblement saturé.");
-                } finally {
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                }
+                    if(count > 0) doc.save("CollectionJouets.pdf");
+                    else alert("Aucune image à imprimer !");
+                } catch(e) { alert("Erreur PDF Mobile"); }
+                finally { btn.innerHTML = originalText; btn.disabled = false; }
             }, 100);
         };
 
         window.saveApiKey = () => {
-            const key = document.getElementById('userApiKey').value;
+            const input = document.getElementById('userApiKey');
+            // NETTOYAGE : On enlève les espaces avant/après qui causent l'erreur
+            const key = input.value.trim();
+            
             if (key) {
                 localStorage.setItem('gemini_api_key', key);
                 apiKey = key;
                 document.getElementById('apiKeyModal').classList.add('hidden');
-                window.generateAllToys();
+                // On relance la génération si une image est présente
+                if(uploadedImageBase64) window.generateAllToys();
+            } else {
+                alert("Veuillez entrer une clé valide.");
             }
         };
         
