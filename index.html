@@ -88,8 +88,16 @@
                 <p class="text-sm text-gray-600 mb-2">Collez votre clé Google AI ci-dessous (commence par "Alza...").</p>
                 <input type="password" id="userApiKey" placeholder="AlzaSy..." class="w-full p-4 border-2 border-gray-200 rounded-xl text-base outline-none focus:border-yellow-400 font-mono text-sm">
             </div>
-            <button onclick="saveApiKey()" class="w-full bg-yellow-400 text-white font-bold py-4 rounded-xl text-lg shadow-md active:scale-95 transition-transform">Valider la clé</button>
-            <p class="text-xs text-center text-gray-400 mt-4">Si vous avez des erreurs, essayez d'en générer une nouvelle.</p>
+            <div class="flex gap-2 mb-4">
+                <button onclick="testConnection()" id="testConnBtn" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-xl text-sm transition">
+                    <i class="fas fa-plug"></i> Tester Connexion
+                </button>
+                <button onclick="clearKey()" class="bg-red-100 hover:bg-red-200 text-red-500 font-bold py-3 px-4 rounded-xl text-sm transition">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <button onclick="saveApiKey()" class="w-full bg-yellow-400 text-white font-bold py-4 rounded-xl text-lg shadow-md active:scale-95 transition-transform">Sauvegarder</button>
+            <div id="testResult" class="mt-4 text-xs text-center font-mono break-all hidden p-2 rounded bg-gray-100"></div>
         </div>
     </div>
 
@@ -153,9 +161,8 @@
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
 
-        const MA_CLE_GOOGLE = ""; 
         let uploadedImageBase64 = null;
-        let apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
+        let apiKey = localStorage.getItem('gemini_api_key') || '';
 
         const toyStyles = [
             { id: 'wood', name: 'Bois Vintage', icon: 'fa-tree', color: 'border-yellow-600', prompt: "Turn this person into a vintage hand-carved wooden toy figure. Natural wood grain texture, simple painted details, rustic." },
@@ -178,7 +185,7 @@
                         const canvas = document.createElement('canvas');
                         let width = img.width;
                         let height = img.height;
-                        const MAX_SIZE = 512; // Réduit à 512 pour être sûr que le payload passe
+                        const MAX_SIZE = 512; 
 
                         if (width > height) {
                             if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
@@ -190,7 +197,7 @@
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.6)); // Compression 60%
+                        resolve(canvas.toDataURL('image/jpeg', 0.6)); 
                     };
                     img.src = e.target.result;
                 };
@@ -240,9 +247,7 @@
             if (!file) return;
 
             document.getElementById('uploadPlaceholder').innerHTML = '<i class="fas fa-spinner fa-spin text-2xl"></i>';
-            
             uploadedImageBase64 = await resizeImage(file);
-            
             document.getElementById('sourceImage').src = uploadedImageBase64;
             document.getElementById('sourceImage').classList.remove('hidden');
             document.getElementById('uploadPlaceholder').classList.add('hidden');
@@ -258,12 +263,7 @@
         };
 
         window.generateAllToys = async () => {
-            if (!uploadedImageBase64) {
-                alert("Veuillez d'abord ajouter une photo !");
-                return;
-            }
-
-            if (!apiKey) apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
+            if (!uploadedImageBase64) { alert("Ajoutez une photo !"); return; }
             if (!apiKey) { document.getElementById('apiKeyModal').classList.remove('hidden'); return; }
 
             const btn = document.getElementById('generateBtn');
@@ -291,7 +291,6 @@
                 if (!uploadedImageBase64) throw new Error("Image non chargée");
                 const base64Data = uploadedImageBase64.split(',')[1];
 
-                // Note: J'ai retiré les SafetySettings pour réduire les causes d'erreur 400
                 const result = await model.generateContent({
                     contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
                     generationConfig: { responseModalities: ["IMAGE"] }
@@ -307,49 +306,100 @@
                     if(btn) { btn.disabled = false; btn.classList.replace('text-gray-300', 'text-blue-500'); }
                     return;
                 }
-
-                if (result.response.promptFeedback?.blockReason) {
-                     throw new Error("Bloqué par sécurité: " + result.response.promptFeedback.blockReason);
-                }
-                throw new Error("Refus IA sans raison");
+                throw new Error("Pas d'image (Refus IA)");
 
             } catch (error) {
                 console.error("Erreur " + style.name, error);
                 
-                // EXTRACTION INTELLIGENTE DE L'ERREUR
-                let displayMsg = "Erreur inconnue";
+                // --- DIAGNOSTIC PRECIS ---
+                let reason = "Erreur inconnue";
+                let details = "";
 
-                // 1. Essayer de lire le message brut
-                if (error.message) displayMsg = error.message;
-
-                // 2. Chercher dans les détails cachés de Google (errorDetails)
-                if (error.errorDetails && Array.isArray(error.errorDetails) && error.errorDetails.length > 0) {
-                    const detail = error.errorDetails[0];
-                    if (detail.reason) displayMsg = detail.reason; // ex: "API_KEY_INVALID"
-                    if (detail.message) displayMsg += ": " + detail.message;
-                } 
-                // 3. Fallback sur le statut HTTP
-                else if (error.status) {
-                     displayMsg = `Erreur HTTP ${error.status}`;
+                // Extraction des détails cachés de Google (ce que vous voyiez en 'Array(2)')
+                if (error.errorDetails && Array.isArray(error.errorDetails)) {
+                     const detailObj = error.errorDetails.find(d => d.reason);
+                     if(detailObj) reason = detailObj.reason; // ex: API_KEY_INVALID
+                     
+                     const msgObj = error.errorDetails.find(d => d.message);
+                     if(msgObj) details = msgObj.message;
+                } else if (error.message) {
+                    reason = error.message;
                 }
 
-                // Traduction conviviale pour l'utilisateur
-                if(displayMsg.includes('API_KEY_INVALID')) {
-                    container.innerHTML = `
-                        <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500">
-                            <i class="fas fa-key text-xl mb-2"></i>
-                            <span class="text-[10px] font-bold">Clé Invalide</span>
-                            <button onclick="showConfig()" class="mt-2 bg-red-500 text-white text-[10px] px-2 py-1 rounded">Corriger</button>
-                        </div>`;
-                } else {
-                    container.innerHTML = `
-                        <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500">
-                            <i class="fas fa-bug text-xl mb-1"></i>
-                            <p class="text-[9px] font-mono leading-tight break-all px-1">${displayMsg.substring(0, 100)}</p>
-                        </div>`;
-                }
+                // Traduction pour l'utilisateur
+                let userMsg = reason;
+                if(reason.includes("API_KEY_INVALID")) userMsg = "CLÉ INVALIDE";
+                if(reason.includes("PERMISSION_DENIED")) userMsg = "PERMISSION REFUSÉE";
+                
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center p-2 text-center h-full w-full bg-red-50 text-red-500 overflow-hidden">
+                        <i class="fas fa-exclamation-circle text-lg mb-1"></i>
+                        <span class="text-[10px] font-bold text-red-600">${userMsg}</span>
+                        <span class="text-[8px] leading-tight mt-1 opacity-70">${details.substring(0, 50)}</span>
+                    </div>`;
             }
         }
+        
+        // --- FONCTIONS CLÉ API ---
+        window.saveApiKey = () => {
+            const input = document.getElementById('userApiKey');
+            // NETTOYAGE AGRESSIF : On ne garde que les lettres, chiffres et tirets. Adieu les espaces cachés !
+            const cleanKey = input.value.replace(/[^a-zA-Z0-9_\-]/g, '');
+            
+            if (!cleanKey.startsWith('AIza')) {
+                alert("Erreur: Une clé Google doit commencer par 'AIza'.");
+                return;
+            }
+
+            localStorage.setItem('gemini_api_key', cleanKey);
+            apiKey = cleanKey;
+            document.getElementById('apiKeyModal').classList.add('hidden');
+            if(uploadedImageBase64) window.generateAllToys();
+        };
+
+        window.clearKey = () => {
+            localStorage.removeItem('gemini_api_key');
+            apiKey = '';
+            document.getElementById('userApiKey').value = '';
+            alert("Clé supprimée. Collez la nouvelle.");
+        };
+
+        window.testConnection = async () => {
+            const input = document.getElementById('userApiKey');
+            const keyToTest = input.value.replace(/[^a-zA-Z0-9_\-]/g, '');
+            const resDiv = document.getElementById('testResult');
+            const btn = document.getElementById('testConnBtn');
+            
+            if(!keyToTest) { alert("Entrez une clé d'abord"); return; }
+            
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Test...';
+            resDiv.classList.remove('hidden');
+            resDiv.innerHTML = "Tentative de connexion...";
+            
+            try {
+                // Test simple TEXTE pour valider la clé (modèle standard)
+                const genAI = new GoogleGenerativeAI(keyToTest);
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const result = await model.generateContent("Hello");
+                const response = await result.response;
+                const text = response.text();
+                
+                resDiv.className = "mt-4 text-xs text-center font-bold p-2 rounded bg-green-100 text-green-700";
+                resDiv.innerHTML = `<i class="fas fa-check"></i> CLÉ VALIDE !<br>Google répond: "${text.substring(0,10)}..."`;
+                btn.innerHTML = '<i class="fas fa-check"></i> Succès';
+                btn.classList.add('bg-green-200');
+            } catch (e) {
+                console.error(e);
+                let errReason = "Erreur inconnue";
+                if(e.errorDetails) errReason = JSON.stringify(e.errorDetails);
+                else errReason = e.message;
+
+                resDiv.className = "mt-4 text-xs text-center font-bold p-2 rounded bg-red-100 text-red-700";
+                resDiv.innerHTML = `<i class="fas fa-times"></i> ÉCHEC : ${errReason}`;
+                btn.innerHTML = '<i class="fas fa-times"></i> Erreur';
+                btn.classList.add('bg-red-200');
+            }
+        };
 
         window.downloadSingle = (id) => {
             const img = document.getElementById(`img-${id}`);
@@ -400,28 +450,14 @@
                 finally { btn.innerHTML = originalText; btn.disabled = false; }
             }, 100);
         };
-
-        window.saveApiKey = () => {
-            const input = document.getElementById('userApiKey');
-            const key = input.value.trim();
-            
-            // Validation basique
-            if (!key.startsWith('AIza')) {
-                alert("Attention: Une clé Google valide commence généralement par 'AIza'. Vérifiez votre copier-coller.");
-                return;
-            }
-
-            if (key) {
-                localStorage.setItem('gemini_api_key', key);
-                apiKey = key;
-                document.getElementById('apiKeyModal').classList.add('hidden');
-                if(uploadedImageBase64) window.generateAllToys();
-            } else {
-                alert("Veuillez entrer une clé valide.");
-            }
+        
+        window.showConfig = () => {
+             const modal = document.getElementById('apiKeyModal');
+             modal.classList.remove('hidden');
+             document.getElementById('userApiKey').value = apiKey;
+             document.getElementById('testResult').classList.add('hidden');
         };
         
-        window.showConfig = () => document.getElementById('apiKeyModal').classList.remove('hidden');
         window.initGrid();
     </script>
 </body>
