@@ -2,19 +2,13 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JeSuisUnJouet - Transformez-vous !</title>
+    <!-- Viewport optimisé pour bloquer le zoom et donner l'impression d'une vraie app -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JeSuisUnJouet</title>
     
-    <!-- Tailwind CSS pour le style rapide -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- jspdf pour générer le PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-    <!-- html2canvas pour la capture d'écran -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-    <!-- Google Generative AI SDK -->
     <script type="importmap">
       {
         "imports": {
@@ -22,397 +16,369 @@
         }
       }
     </script>
-
-    <!-- FontAwesome pour les icônes -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Google Fonts: Une police amusante -->
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;600&display=swap" rel="stylesheet">
 
     <style>
         body {
             font-family: 'Fredoka', sans-serif;
-            background-color: #fdf6e3; /* Couleur crème douce */
-            background-image: radial-gradient(#ffcdb2 1px, transparent 1px);
-            background-size: 20px 20px;
+            background-color: #fdf6e3;
+            /* Pour éviter le rebond élastique sur iOS */
+            overscroll-behavior-y: none;
         }
         
+        /* Empêcher la sélection de texte comme sur une vraie app */
+        .no-select {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
         .toy-card {
-            transition: all 0.3s ease;
-            backface-visibility: hidden;
+            background: white;
+            border-radius: 1rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            /* Ombre douce */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        
-        .toy-card:hover {
-            transform: translateY(-5px) scale(1.02);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+
+        .card-image-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 100%; /* Ratio 1:1 Carré parfait */
+            background: #f3f4f6;
+        }
+
+        .card-image-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-image-content img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #ff6b6b;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #ff6b6b;
             border-radius: 50%;
             width: 30px;
             height: 30px;
             animation: spin 1s linear infinite;
         }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .gradient-text {
-            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="min-h-screen text-gray-800">
+<body class="text-gray-800 min-h-screen pb-10">
 
-    <!-- Configuration Modal (API Key) -->
-    <div id="apiKeyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4 border-4 border-yellow-400">
-            <h3 class="text-2xl font-bold mb-4 text-center text-yellow-500"><i class="fas fa-key"></i> Clé API Requise</h3>
-            <p class="mb-4 text-gray-600 text-sm">Pour générer les images, vous avez besoin d'une clé API Google Gemini gratuite.</p>
-            <input type="password" id="userApiKey" placeholder="Collez votre clé API Gemini ici..." class="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-yellow-400 outline-none mb-4">
-            <button onclick="saveApiKey()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-3 rounded-lg transition">Commencer à jouer !</button>
-            <p class="mt-4 text-xs text-center text-gray-400"><a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline hover:text-yellow-500">Obtenir une clé ici</a></p>
+    <!-- Modal Clé API -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden p-6">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-sm border-4 border-yellow-400 relative shadow-2xl">
+            <button onclick="document.getElementById('apiKeyModal').classList.add('hidden')" class="absolute top-2 right-2 text-gray-400 p-2">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-4 text-center text-yellow-500">Clé API Requise</h3>
+            <input type="password" id="userApiKey" placeholder="Collez votre clé Google AI ici..." class="w-full p-4 border-2 border-gray-200 rounded-xl mb-4 text-base outline-none focus:border-yellow-400">
+            <button onclick="saveApiKey()" class="w-full bg-yellow-400 text-white font-bold py-4 rounded-xl text-lg shadow-md active:scale-95 transition-transform">Valider</button>
+            <p class="text-xs text-center text-gray-400 mt-4">Nécessaire uniquement la première fois.</p>
         </div>
     </div>
 
-    <!-- Header -->
-    <header class="bg-white shadow-sm sticky top-0 z-40">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <i class="fas fa-robot text-3xl text-red-500"></i>
-                <h1 class="text-3xl font-bold gradient-text">JeSuisUnJouet</h1>
-            </div>
-            <button onclick="showConfig()" class="text-gray-400 hover:text-gray-600">
-                <i class="fas fa-cog text-xl"></i>
-            </button>
+    <!-- En-tête -->
+    <header class="sticky top-0 bg-white/90 backdrop-blur-sm z-40 shadow-sm px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-robot text-red-500 text-2xl"></i>
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-yellow-500">JeSuisUnJouet</h1>
         </div>
+        <button onclick="showConfig()" class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">
+            <i class="fas fa-cog"></i>
+        </button>
     </header>
 
-    <main class="container mx-auto px-4 py-8">
+    <main class="container mx-auto px-4 py-6 max-w-md">
         
-        <!-- Upload Section -->
-        <div class="max-w-2xl mx-auto bg-white rounded-3xl shadow-lg p-8 mb-12 border-b-8 border-red-400">
-            <h2 class="text-2xl font-bold text-center mb-6">1. Choisissez votre photo</h2>
-            
-            <div class="flex flex-col md:flex-row gap-8 items-center justify-center">
-                <!-- Preview Zone -->
-                <div class="w-48 h-48 bg-gray-100 rounded-2xl overflow-hidden border-4 border-dashed border-gray-300 flex items-center justify-center relative" id="previewContainer">
-                    <img id="sourceImage" class="w-full h-full object-cover hidden" alt="Source">
-                    <div id="uploadPlaceholder" class="text-center text-gray-400">
-                        <i class="fas fa-camera text-3xl mb-2"></i>
-                        <p class="text-sm">Votre photo</p>
+        <!-- Zone Upload -->
+        <div class="bg-white rounded-3xl shadow-lg p-6 mb-8 border-b-8 border-red-400">
+            <div class="flex flex-col gap-6">
+                <!-- Prévisualisation Photo -->
+                <div class="aspect-square w-full bg-gray-50 rounded-2xl border-4 border-dashed border-gray-200 flex items-center justify-center relative overflow-hidden group" onclick="document.getElementById('fileInput').click()">
+                    <img id="sourceImage" class="w-full h-full object-cover hidden z-10">
+                    <div id="uploadPlaceholder" class="text-center text-gray-400 z-0">
+                        <i class="fas fa-camera text-4xl mb-2 text-gray-300"></i>
+                        <p class="text-sm font-semibold">Toucher pour ajouter</p>
                     </div>
                 </div>
 
-                <!-- Controls -->
-                <div class="flex flex-col gap-4 w-full md:w-auto">
+                <!-- Boutons Actions -->
+                <div class="flex flex-col gap-3">
                     <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
-                    <button onclick="document.getElementById('fileInput').click()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-xl transition shadow-md flex items-center justify-center gap-2">
-                        <i class="fas fa-upload"></i> Charger une photo
-                    </button>
-                    <button id="generateBtn" onclick="generateAllToys()" disabled class="bg-gray-300 text-gray-500 font-bold py-3 px-6 rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-not-allowed">
-                        <i class="fas fa-magic"></i> Tout Générer (8 Jouets)
+                    
+                    <button id="generateBtn" onclick="generateAllToys()" disabled class="w-full py-4 rounded-xl font-bold text-lg shadow-md transition-all flex items-center justify-center gap-2 bg-gray-200 text-gray-400 cursor-not-allowed">
+                        <i class="fas fa-magic"></i> 
+                        <span>Fabriquer les Jouets</span>
                     </button>
                 </div>
             </div>
-            <p class="text-center text-xs text-gray-400 mt-4">Pour de meilleurs résultats, utilisez une photo de visage bien éclairée.</p>
         </div>
 
-        <!-- Results Grid -->
-        <div id="resultsSection" class="hidden">
+        <!-- Zone Résultats -->
+        <div id="resultsSection" class="hidden animate-fade-in">
             
-            <!-- Zone spécifique pour la capture d'écran (Titre + Grille) -->
-            <div id="captureZone" class="p-4 rounded-xl">
-                <h2 class="text-3xl font-bold text-center mb-8 text-gray-700">Votre collection de jouets</h2>
+            <div id="captureZone" class="bg-[#fdf6e3] rounded-xl p-2 mb-6">
+                <h2 class="text-2xl font-bold text-center mb-6 text-gray-700">Ma Collection</h2>
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" id="toysGrid">
-                    <!-- Les cartes seront générées ici par JS -->
+                <div class="grid grid-cols-2 gap-4" id="toysGrid">
+                    <!-- Les cartes seront injectées ici -->
                 </div>
                 
-                <!-- Petit watermark discret pour la capture -->
-                <div class="text-center text-xs text-gray-400 italic mb-4 hidden" id="captureWatermark">
-                    Créé avec JeSuisUnJouet
-                </div>
+                <div class="text-center text-[10px] text-gray-400 mt-4 hidden" id="captureWatermark">Généré par JeSuisUnJouet</div>
             </div>
 
-            <!-- Boutons de téléchargement -->
-            <div class="text-center pb-12 flex flex-col md:flex-row justify-center gap-4">
-                <button onclick="downloadPDF()" id="pdfBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transform transition hover:-translate-y-1 flex items-center justify-center gap-3 w-full md:w-auto">
-                    <i class="fas fa-file-pdf text-2xl"></i>
-                    Album PDF
+            <!-- Actions Finales -->
+            <div class="flex flex-col gap-4 mt-8">
+                <button onclick="downloadCapture()" id="captureBtn" class="w-full bg-green-500 active:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-3 text-lg transition-transform active:scale-95">
+                    <i class="fas fa-image"></i> Sauver Image (JPG)
                 </button>
                 
-                <button onclick="downloadCapture()" id="captureBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transform transition hover:-translate-y-1 flex items-center justify-center gap-3 w-full md:w-auto">
-                    <i class="fas fa-camera text-2xl"></i>
-                    Image (JPG)
+                <button onclick="downloadPDF()" id="pdfBtn" class="w-full bg-red-500 active:bg-red-600 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-3 text-lg transition-transform active:scale-95">
+                    <i class="fas fa-file-pdf"></i> Télécharger PDF
                 </button>
+                
+                <p class="text-xs text-center text-gray-400 mt-2 px-4">
+                    Si le téléchargement ne démarre pas, vérifiez que vous n'êtes pas dans un navigateur intégré (Instagram, TikTok, etc.).
+                </p>
             </div>
         </div>
 
     </main>
 
-    <!-- Footer -->
-    <footer class="text-center py-8 text-gray-500 text-sm">
-        <p>Généré avec Gemini 2.5 Flash Image Preview (Nano Banana)</p>
-    </footer>
-
     <script type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
 
-        // --- ZONE DE CONFIGURATION ---
         const MA_CLE_GOOGLE = ""; 
-
-
-        // Configuration des styles de jouets
-        const toyStyles = [
-            { id: 'wood', name: 'Jouet en Bois', icon: 'fa-tree', color: 'border-yellow-600', prompt: "Turn this person into a vintage hand-carved wooden toy figure. Natural wood grain texture, simple painted details, rustic jointed limbs, standing on a wooden surface." },
-            { id: 'manga', name: 'Couv\' Manga', icon: 'fa-book-open', color: 'border-indigo-500', prompt: "Turn this person into the main character on a colorful Manga magazine cover. Anime style drawing, bold japanese typography, vibrant colors, action lines, paper texture, 2D flat illustration." },
-            { id: 'barbie', name: 'Poupée en Boîte', icon: 'fa-female', color: 'border-pink-400', prompt: "Turn this person into a plastic fashion doll packaged inside a toy box (Barbie/Ken style). Visible cardboard box backing with bright colors, plastic blister window, toy store shelf look." },
-            { id: 'playmobil', name: 'Play-Mibil', icon: 'fa-smile', color: 'border-blue-600', prompt: "Turn this person into a Playmobil figure. Round plastic head, stiff hair, simple smiley face, no nose, stiff arms." },
-            { id: 'vinyl', name: 'Grosse Tête Vinyl', icon: 'fa-user-circle', color: 'border-purple-500', prompt: "Turn this person into a glossy vinyl designer toy with a huge head (Urban Vinyl Art Toy style). Smooth plastic finish, minimalist facial features, vibrant colors, clean studio background." },
-            { id: 'clay', name: 'Pâte à modeler', icon: 'fa-hand-rock', color: 'border-green-400', prompt: "Turn this person into a Claymation character standing on a real wooden table. Made of plasticine clay, fingerprints visible, stop-motion look, shallow depth of field (tilt-shift)." },
-            { id: 'plush', name: 'Peluche Canapé', icon: 'fa-couch', color: 'border-orange-400', prompt: "Turn this person into a full-body soft felt plushie doll sitting against a soft cushion on a sofa. Knitted wool texture, cute button eyes, visible stitching, cozy living room background, wide shot showing the whole doll." },
-            { id: 'action', name: 'Figurine Action', icon: 'fa-fist-raised', color: 'border-red-600', prompt: "Turn this person into a vintage plastic action figure (80s style). Muscular, stiff pose, plastic sheen, blister pack background." }
-        ];
-
         let uploadedImageBase64 = null;
-        
         let apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
 
-        function initGrid() {
+        const toyStyles = [
+            { id: 'wood', name: 'Bois Vintage', icon: 'fa-tree', color: 'border-yellow-600', prompt: "Turn this person into a vintage hand-carved wooden toy figure. Natural wood grain texture, simple painted details, rustic." },
+            { id: 'manga', name: 'Manga', icon: 'fa-book-open', color: 'border-indigo-500', prompt: "Turn this person into a Manga magazine cover character. Anime style, vibrant colors, japanese text." },
+            { id: 'barbie', name: 'Poupée Box', icon: 'fa-female', color: 'border-pink-400', prompt: "Turn this person into a plastic fashion doll inside a pink toy box. Barbie style, plastic texture." },
+            { id: 'playmobil', name: 'Play-Mibil', icon: 'fa-smile', color: 'border-blue-600', prompt: "Turn this person into a Playmobil figure. Round plastic head, stiff hair, no nose, smiley face." },
+            { id: 'vinyl', name: 'Pop Art', icon: 'fa-user-circle', color: 'border-purple-500', prompt: "Turn this person into a vinyl designer toy with a big head. Funko Pop style, smooth plastic." },
+            { id: 'clay', name: 'Pâte à modeler', icon: 'fa-hand-rock', color: 'border-green-400', prompt: "Claymation character made of plasticine, fingerprints visible, stop-motion look." },
+            { id: 'plush', name: 'Peluche', icon: 'fa-couch', color: 'border-orange-400', prompt: "Soft felt plushie doll. Knitted wool texture, button eyes, stitching visible." },
+            { id: 'action', name: 'Action Man', icon: 'fa-fist-raised', color: 'border-red-600', prompt: "Vintage 80s plastic action figure. Muscular, stiff pose, plastic sheen." }
+        ];
+
+        // --- OUTILS TÉLÉCHARGEMENT ROBUSTE (iOS/Android) ---
+        function triggerDownload(blob, filename) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+        }
+
+        window.initGrid = () => {
             const grid = document.getElementById('toysGrid');
             grid.innerHTML = '';
-            
             toyStyles.forEach(style => {
                 const card = document.createElement('div');
-                card.className = `toy-card bg-white rounded-2xl shadow-md overflow-hidden border-b-4 ${style.color} relative`;
+                card.className = `toy-card border-b-4 ${style.color}`;
                 card.innerHTML = `
-                    <div class="h-64 bg-gray-100 flex items-center justify-center relative overflow-hidden" id="img-container-${style.id}">
-                        <div class="text-gray-300 text-center" id="placeholder-${style.id}">
-                            <i class="fas ${style.icon} text-4xl mb-2"></i>
-                            <p class="font-bold">${style.name}</p>
+                    <div class="card-image-wrapper">
+                        <div class="card-image-content bg-gray-100" id="container-${style.id}">
+                            <div class="text-center text-gray-300" id="placeholder-${style.id}">
+                                <i class="fas ${style.icon} text-3xl mb-1"></i>
+                                <p class="text-[10px] uppercase font-bold tracking-wider">${style.name}</p>
+                            </div>
                         </div>
                     </div>
-                    <div class="p-4 flex justify-between items-center">
-                        <span class="font-bold text-gray-700">${style.name}</span>
-                        <button onclick="downloadImage('img-${style.id}')" class="text-gray-400 hover:text-blue-500 disabled:opacity-50" disabled id="btn-${style.id}">
+                    <div class="p-3 flex justify-between items-center bg-white h-12">
+                        <span class="font-bold text-xs text-gray-600 truncate mr-2">${style.name}</span>
+                        <button onclick="downloadSingle('${style.id}')" disabled id="btn-${style.id}" class="text-gray-300 hover:text-blue-500 disabled:opacity-30">
                             <i class="fas fa-download"></i>
                         </button>
                     </div>
                 `;
                 grid.appendChild(card);
             });
-        }
+        };
 
         window.handleFileSelect = (event) => {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = (e) => {
                 uploadedImageBase64 = e.target.result;
-                
-                const img = document.getElementById('sourceImage');
-                img.src = uploadedImageBase64;
-                img.classList.remove('hidden');
+                document.getElementById('sourceImage').src = uploadedImageBase64;
+                document.getElementById('sourceImage').classList.remove('hidden');
                 document.getElementById('uploadPlaceholder').classList.add('hidden');
                 
                 const btn = document.getElementById('generateBtn');
                 btn.disabled = false;
-                btn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
-                btn.classList.add('bg-green-500', 'hover:bg-green-600', 'text-white');
+                btn.classList.remove('bg-gray-200', 'text-gray-400', 'cursor-not-allowed');
+                btn.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600', 'active:bg-blue-700');
                 
-                initGrid();
+                window.initGrid();
                 document.getElementById('resultsSection').classList.remove('hidden');
                 
-                btn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                // Scroll automatique doux
+                setTimeout(() => {
+                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
             };
             reader.readAsDataURL(file);
         };
 
         window.generateAllToys = async () => {
-            if (!apiKey) {
-                apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
-            }
-
-            if (!apiKey) {
-                document.getElementById('apiKeyModal').classList.remove('hidden');
-                return;
-            }
-
-            if (!uploadedImageBase64) return;
+            if (!apiKey) apiKey = MA_CLE_GOOGLE || localStorage.getItem('gemini_api_key') || '';
+            if (!apiKey) { document.getElementById('apiKeyModal').classList.remove('hidden'); return; }
 
             const btn = document.getElementById('generateBtn');
+            const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fabrication des jouets...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fabrication en cours...';
 
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
 
+            // Génération séquentielle pour ne pas crasher le navigateur mobile
             for (const style of toyStyles) {
                 await generateSingleToy(model, style);
             }
-
+            
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-magic"></i> Regénérer tout';
+            btn.innerHTML = '<i class="fas fa-check"></i> Terminé ! (Relancer)';
+            setTimeout(() => { btn.innerHTML = originalText; }, 3000);
         };
 
         async function generateSingleToy(model, style) {
-            const container = document.getElementById(`img-container-${style.id}`);
+            const container = document.getElementById(`container-${style.id}`);
             const placeholder = document.getElementById(`placeholder-${style.id}`);
-            
             placeholder.innerHTML = '<div class="loader"></div>';
 
             try {
-                const base64Data = uploadedImageBase64.split(',')[1];
-                const prompt = style.prompt;
-
                 const result = await model.generateContent({
-                    contents: [{
-                        parts: [
-                            { text: prompt },
-                            { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-                        ]
-                    }],
+                    contents: [{ parts: [{ text: style.prompt }, { inlineData: { mimeType: "image/jpeg", data: uploadedImageBase64.split(',')[1] } }] }],
                     generationConfig: { responseModalities: ["IMAGE"] }
                 });
-
-                const response = result.response;
-                let generatedImageBase64 = null;
                 
-                if(response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
-                    const imgPart = response.candidates[0].content.parts.find(p => p.inlineData);
-                    if(imgPart) {
-                        generatedImageBase64 = `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-                    }
+                const imgPart = result.response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                if(imgPart) {
+                    const src = `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+                    container.innerHTML = `<img src="${src}" id="img-${style.id}" alt="${style.name}" class="animate-fade-in">`;
+                    document.getElementById(`btn-${style.id}`).disabled = false;
+                    document.getElementById(`btn-${style.id}`).classList.remove('text-gray-300');
+                    document.getElementById(`btn-${style.id}`).classList.add('text-blue-500');
                 }
-                
-                if (!generatedImageBase64) throw new Error("Pas d'image dans la réponse");
-
-                container.innerHTML = `<img src="${generatedImageBase64}" id="img-${style.id}" class="w-full h-full object-cover animate-fade-in" alt="${style.name}">`;
-                document.getElementById(`btn-${style.id}`).disabled = false;
-
             } catch (error) {
-                console.error("Erreur pour " + style.name, error);
-                placeholder.innerHTML = '<i class="fas fa-exclamation-triangle text-red-500 text-2xl"></i><p class="text-xs text-red-500 mt-2">Erreur</p>';
+                console.error(error);
+                placeholder.innerHTML = '<i class="fas fa-times text-red-400"></i>';
             }
         }
 
-        // Logic Capture d'écran
+        window.downloadSingle = (id) => {
+            const img = document.getElementById(`img-${id}`);
+            if(img) {
+                fetch(img.src)
+                    .then(res => res.blob())
+                    .then(blob => triggerDownload(blob, `Jouet-${id}.jpg`));
+            }
+        };
+
         window.downloadCapture = () => {
-            const captureElement = document.getElementById('captureZone');
             const btn = document.getElementById('captureBtn');
-            const watermark = document.getElementById('captureWatermark');
-            
-            // État chargement
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Préparation...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ...';
             btn.disabled = true;
+            
+            const element = document.getElementById('captureZone');
+            document.getElementById('captureWatermark').classList.remove('hidden');
 
-            // Afficher watermark temporairement
-            watermark.classList.remove('hidden');
-
-            html2canvas(captureElement, {
-                backgroundColor: '#fdf6e3', // Couleur de fond du body pour que ça soit joli
-                scale: 2, // Meilleure qualité (Retina)
-                logging: false,
-                useCORS: true // Important si jamais on charge des images externes (ici base64 donc ça va)
+            html2canvas(element, {
+                scale: 1.5, // Compromis qualité/performance mobile
+                useCORS: true,
+                backgroundColor: '#fdf6e3',
+                logging: false
             }).then(canvas => {
-                // Créer le lien de téléchargement
-                const link = document.createElement('a');
-                link.download = 'MaCollectionJouets.jpg';
-                link.href = canvas.toDataURL('image/jpeg', 0.9); // Qualité JPEG 90%
-                link.click();
-
-                // Reset
+                canvas.toBlob(blob => {
+                    triggerDownload(blob, 'MaCollection.jpg');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    document.getElementById('captureWatermark').classList.add('hidden');
+                }, 'image/jpeg', 0.85);
+            }).catch(e => {
+                alert("Erreur mémoire. Essayez de télécharger les images une par une.");
                 btn.innerHTML = originalText;
                 btn.disabled = false;
-                watermark.classList.add('hidden');
-            }).catch(err => {
-                console.error("Erreur capture", err);
-                alert("Oups, la capture a échoué. Vérifiez la console.");
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-                watermark.classList.add('hidden');
             });
         };
 
-        window.downloadPDF = async () => {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(22);
-            doc.setTextColor(255, 107, 107);
-            doc.text("Ma Collection JeSuisUnJouet", 105, 20, null, null, "center");
-            
-            const imgWidth = 70;
-            const imgHeight = 50;
-            const gapX = 15;
-            const gapY = 8;
-            
-            const startX = 27.5; 
-            const startY = 30;
-            
-            let currentX = startX;
-            let currentY = startY;
-            let col = 0;
-            let count = 0;
+        window.downloadPDF = () => {
+            const btn = document.getElementById('pdfBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF...';
+            btn.disabled = true;
 
-            doc.setFontSize(11);
-            doc.setTextColor(50, 50, 50);
-
-            for (let i = 0; i < toyStyles.length; i++) {
-                const style = toyStyles[i];
-                const imgElement = document.getElementById(`img-${style.id}`);
-                
-                if (imgElement && imgElement.src) {
-                    try {
-                        doc.addImage(imgElement.src, 'JPEG', currentX, currentY, imgWidth, imgHeight);
-                        doc.setDrawColor(220, 220, 220);
-                        doc.rect(currentX, currentY, imgWidth, imgHeight);
-                        doc.setFont("helvetica", "bold");
-                        doc.text(style.name, currentX + (imgWidth/2), currentY + imgHeight + 5, null, null, "center");
-                        
-                        count++;
-                        col++;
-                        if (col > 1) {
-                            col = 0;
-                            currentX = startX;
-                            currentY += imgHeight + gapY;
-                        } else {
-                            currentX += imgWidth + gapX;
+            setTimeout(() => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    
+                    doc.setFontSize(20);
+                    doc.setTextColor(220, 50, 50);
+                    doc.text("Ma Collection", 105, 20, null, null, "center");
+                    
+                    let y = 40;
+                    let count = 0;
+                    
+                    toyStyles.forEach((style, index) => {
+                        const img = document.getElementById(`img-${style.id}`);
+                        if(img) {
+                            // Mise en page simple : 2 images par ligne ou 1 grosse par page selon préférence
+                            // Ici: liste verticale simple pour robustesse
+                            if(y > 250) { doc.addPage(); y = 20; }
+                            
+                            doc.addImage(img.src, 'JPEG', 20, y, 60, 60);
+                            doc.setFontSize(12);
+                            doc.setTextColor(50,50,50);
+                            doc.text(style.name, 90, y + 30);
+                            
+                            y += 70;
+                            count++;
                         }
+                    });
 
-                        if (currentY + imgHeight > 280) {
-                            doc.addPage();
-                            currentY = 20;
-                            col = 0;
-                            currentX = startX;
-                        }
-
-                    } catch (e) {
-                        console.error("Erreur ajout image au PDF", e);
+                    if(count > 0) {
+                        doc.save("CollectionJouets.pdf");
+                    } else {
+                        alert("Aucun jouet généré à imprimer !");
                     }
+                } catch(e) {
+                    console.error(e);
+                    alert("Erreur PDF. Mobile possiblement saturé.");
+                } finally {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
                 }
-            }
-
-            if (count === 0) {
-                alert("Aucune image générée à télécharger !");
-                return;
-            }
-
-            doc.setFontSize(8);
-            doc.setTextColor(180, 180, 180);
-            doc.text("Généré par JeSuisUnJouet via Gemini AI", 105, 290, null, null, "center");
-
-            doc.save("MaCollectionJouets.pdf");
+            }, 100);
         };
 
         window.saveApiKey = () => {
@@ -421,31 +387,12 @@
                 localStorage.setItem('gemini_api_key', key);
                 apiKey = key;
                 document.getElementById('apiKeyModal').classList.add('hidden');
-                generateAllToys(); 
+                window.generateAllToys();
             }
-        };
-
-        window.showConfig = () => {
-            document.getElementById('apiKeyModal').classList.remove('hidden');
         };
         
-        document.getElementById('apiKeyModal').addEventListener('click', (e) => {
-            if(e.target === document.getElementById('apiKeyModal')) {
-                 document.getElementById('apiKeyModal').classList.add('hidden');
-            }
-        });
-
-        window.downloadImage = (imgId) => {
-            const img = document.getElementById(imgId);
-            if (img) {
-                const link = document.createElement('a');
-                link.download = `JeSuisUnJouet-${imgId}.jpg`;
-                link.href = img.src;
-                link.click();
-            }
-        };
-
-        initGrid();
+        window.showConfig = () => document.getElementById('apiKeyModal').classList.remove('hidden');
+        window.initGrid();
     </script>
 </body>
 </html>
